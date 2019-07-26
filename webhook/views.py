@@ -5,12 +5,13 @@ from rest_framework.views import APIView
 from django.http import JsonResponse
 import paho.mqtt.client as mqtt
 from .models import Phrase, Command, Scene, Device
+from django.conf import settings
 
 class WebhookView(APIView):
     def post(self, request):
-        print(request.data)
+        # print(request.data)
         session = request.data.get('session')
-        print(session)
+        # print(session)
         session_id = session.get('session_id')
         message_id = session.get('message_id')
         user_id = session.get('user_id')
@@ -33,38 +34,64 @@ class WebhookView(APIView):
             }, 
             status = status.HTTP_200_OK)
 # Create your views here.
-client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
 
+client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
 client.connect(host = "192.168.1.176")
 
-def execute_command(command):
-    if command.value_to_set != -1:
-        client.publish(command.device.connection, command.value_to_set)
+def on_disconnect(client, userdata, rc):
+    if rc != 0:
+        print("Unexpected disconnection.")
 
+client.on_disconnect = on_disconnect
+
+def execute_command(command, request):
+    print(command.value_to_set)
+    # in request value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
+    if int(command.value_to_set) == -1:
+        print('if')
+        for entity in request.data.get('request').get('nlu').get('entities'):
+            if entity.get('type') == 'YANDEX.NUMBER':
+                print('publishing')
+                print(command.device.connection)
+                print(entity.get('value'))
+                client.publish(command.device.connection, entity.get('value'))
+            print(entity)
+        # print(request.data)
+    else:
+        print(command.value_to_set)
+        print('else')
+        client.publish(command.device.connection, command.value_to_set)
+    
 
 def text_handler(request):
     command = request.data.get('request').get('command')
-    original = request.data.get('request').get('original_utterance')
-    
+    command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string
     try:
-        phrase = Phrase.objects.all().get(phrase__iexact = command)
-        execute_command(phrase.command)
+        if command[-1] == ' ': # remove trailing space
+            command = command[0:-1]
+    except:
+        command = ''
+    print(command)
+    original = request.data.get('request').get('original_utterance')
+    original = ''.join([i for i in original if not i.isdigit()])
+    try:
+        if original[-1] == ' ':
+            original = original[0:-1]
+    except:
+        original = ''
+    # print(request.data)
+    try:
+        phrase = Phrase.objects.all().get(phrase__iexact = command.lower())
+        # print(phrase)
+        execute_command(phrase.command, request)
         text_to_return = phrase.success_response
     except Phrase.DoesNotExist:
+        print('exception')
         try:
-            phrase = Phrase.objects.all().get(phrase__iexact = original)
-            execute_command(phrase.command)
+            phrase = Phrase.objects.all().get(phrase__iexact = original.lower())
+            execute_command(phrase.command, request)
             text_to_return = phrase.success_response
         except Phrase.DoesNotExist:
             text_to_return = "К сожалению, я не знаю такой команды"
-    # text_to_return = ""
-    # if "включи" in command or "включи" in original:
-    #     text_to_return = "Включаю"
-    #     client.publish("/devices/wb-gpio/controls/EXT2_R3A2/on", 1)
-    # elif "выключи" in command or "выключи" in original:
-    #     text_to_return = "Выключаю"
-    #     client.publish("/devices/wb-gpio/controls/EXT2_R3A2/on", 0)
-    # else:
-    #     text_to_return = "Дороу"
     
     return text_to_return

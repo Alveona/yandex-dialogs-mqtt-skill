@@ -25,12 +25,13 @@ SECRET_KEY = '4gf8dms8^()xkc3aw5&qdmcm1uamj7^omkcptpqke2crb^vg)u'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ["aa0a763b.ngrok.io", "127.0.0.1"]
+ALLOWED_HOSTS = ["880bd9d7.ngrok.io", "127.0.0.1"]
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'suit',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -38,9 +39,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'webhook'
+    'webhook',
+    
 ]
-
+SUIT_CONFIG = {
+    'ADMIN_NAME': 'Настройка Алисы'
+}
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -77,11 +81,18 @@ WSGI_APPLICATION = 'show_room_alice.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'alice_wb_database1',
+        'USER': 'root',
+        'PASSWORD': '', # TODO CHANGE
     }
 }
-
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+#     }
+# }
 
 # Password validation
 # https://docs.djangoproject.com/en/2.2/ref/settings/#auth-password-validators
