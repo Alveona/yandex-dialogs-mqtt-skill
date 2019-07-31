@@ -7,6 +7,10 @@ import paho.mqtt.client as mqtt
 from .models import Phrase, Command, Scene, Device
 from django.conf import settings
 
+class ValueIsNotPercent(Exception):
+    '''Raised when the value given to Alice to change on dimmer is not in percentage range (0-100)'''
+    pass
+
 class WebhookView(APIView):
     def post(self, request):
         # print(request.data)
@@ -41,12 +45,21 @@ client.connect(host = "192.168.1.176")
 def on_disconnect(client, userdata, rc):
     if rc != 0:
         print("Unexpected disconnection.")
+        client.reconnect()
 
 client.on_disconnect = on_disconnect
 
+# uses to convert percentages to different range
+def scale_value(old_value, old_min, old_max, new_min, new_max):
+    new_value = (((old_value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
+    if new_value:
+        return new_value
+    return 0
+
+
 def execute_command(command, request):
     print(command.value_to_set)
-    # in request value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
+    # in request, value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
     if int(command.value_to_set) == -1:
         print('if')
         for entity in request.data.get('request').get('nlu').get('entities'):
@@ -54,6 +67,9 @@ def execute_command(command, request):
                 print('publishing')
                 print(command.device.connection)
                 print(entity.get('value'))
+                value = entity.get('value')
+                if value > 100 or value < 0 :
+                    raise ValueIsNotPercent('Value is not a percent')
                 client.publish(command.device.connection, entity.get('value'))
             print(entity)
         # print(request.data)
@@ -93,5 +109,7 @@ def text_handler(request):
             text_to_return = phrase.success_response
         except Phrase.DoesNotExist:
             text_to_return = "К сожалению, я не знаю такой команды"
+    except ValueIsNotPercent:
+        text_to_return = "Значение не является процентом"
     
     return text_to_return
