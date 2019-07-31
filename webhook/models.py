@@ -35,7 +35,9 @@ SET_CHOICES = [('0', '0'), ('1', '1'), ('-1', 'Пользовательское 
 class Command(models.Model):
     title = models.CharField(max_length = 255, null = True)
     device = models.ForeignKey(Device, on_delete=models.CASCADE, null = True)
-    value_to_set = models.CharField(max_length = 255, verbose_name = "Установить значение", choices=SET_CHOICES, null = True)
+    value_to_set = models.CharField(max_length = 255, verbose_name = "Установить значение", choices=SET_CHOICES, null = True, blank = True)
+    get_value = models.BooleanField(default=False, verbose_name="Получить значение от Алисы", 
+    help_text="Если активна опция получения значения от Алисы, установка значения невозможна")
     def __str__(self):
         return self.title + "; id: " + str(self.id)
     

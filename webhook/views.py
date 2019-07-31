@@ -55,8 +55,9 @@ def on_connect(client, userdata, flags, rc):
 
 client.on_disconnect = on_disconnect
 client.on_connect = on_connect
-# uses to convert percentages to different range
+
 def scale_value(old_value, old_min, old_max, new_min, new_max):
+    # is using to convert percentages to different range
     new_value = (((old_value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
     if new_value:
         return new_value
@@ -64,10 +65,10 @@ def scale_value(old_value, old_min, old_max, new_min, new_max):
 
 
 def greetings_handler(command):
-    ''' Uses to recognise greetings replies such as 'Алиса' and 'Слушай, Алиса' '''
+    ''' Is using to recognise greetings replies such as 'Алиса' and 'Слушай, Алиса' '''
     greetings_replies = ['Алиса', 'Слушай Алиса']
     greetings_replies = sorted(greetings_replies, key = len)
-    # using to sort array by length so the longest substrings go first
+    # is using to sort array by length so the longest substring goes first
     for reply in reversed(greetings_replies):
         if reply.lower() in command:
             command = command.replace(reply.lower(), '')
@@ -75,7 +76,13 @@ def greetings_handler(command):
     return command
 
 def execute_command(command, request):
+    ''' Returns None if value is published or given value otherwise '''
     print(command.value_to_set)
+    if command.get_value == True:
+        value = client.subscribe(command.device.connection)
+        print(value)
+        client.unsubscribe(command.device.connection)
+        return value
     # in request, value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
     if int(command.value_to_set) == -1:
         print('if')
@@ -90,23 +97,22 @@ def execute_command(command, request):
                 value = int(scale_value(old_value = value, old_min = 0, old_max = 100, new_min = 
                 command.device.start_value, new_max = command.device.max_value))
                 print('new value: ' + str(value))
-                client.publish(command.device.connection, value)
+                client.publish(command.device.connection, value, retain = True)
             print(entity)
         # print(request.data)
     else:
         print(command.value_to_set)
         print('else')
-        client.publish(command.device.connection, command.value_to_set)
+        client.publish(command.device.connection, command.value_to_set, retain = True)
+    return None
     
 
 def text_handler(request):
     command = request.data.get('request').get('command')
-    command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string
+    command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string, we will retain them later from yandex's info
     command = greetings_handler(command.lower())
     try:
         command = command.strip()
-        # if command[-1] == ' ': # remove trailing space
-        #     command = command[0:-1]
     except:
         command = ''
     print(command)
@@ -114,14 +120,10 @@ def text_handler(request):
     original = ''.join([i for i in original if not i.isdigit()])
     try:
         original = original.strip()
-        # if original[-1] == ' ':
-            # original = original[0:-1]
     except:
         original = ''
-    # print(request.data)
     try:
         phrase = Phrase.objects.all().get(phrase__iexact = command.lower())
-        # print(phrase)
         execute_command(phrase.command, request)
         text_to_return = phrase.success_response
     except Phrase.DoesNotExist:
