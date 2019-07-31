@@ -40,15 +40,21 @@ class WebhookView(APIView):
 # Create your views here.
 
 client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
-client.connect(host = "192.168.1.176")
+client.connect(host = "192.168.0.83", port = 1883)
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
         print("Unexpected disconnection.")
         client.reconnect()
 
-client.on_disconnect = on_disconnect
+def on_connect(client, userdata, flags, rc):
+    if rc==0:
+        print("connected OK Returned code=",rc)
+    else:
+        print("Bad connection Returned code=",rc)
 
+client.on_disconnect = on_disconnect
+client.on_connect = on_connect
 # uses to convert percentages to different range
 def scale_value(old_value, old_min, old_max, new_min, new_max):
     new_value = (((old_value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
@@ -56,6 +62,17 @@ def scale_value(old_value, old_min, old_max, new_min, new_max):
         return new_value
     return 0
 
+
+def greetings_handler(command):
+    ''' Uses to recognise greetings replies such as 'Алиса' and 'Слушай, Алиса' '''
+    greetings_replies = ['Алиса', 'Слушай Алиса']
+    greetings_replies = sorted(greetings_replies, key = len)
+    # using to sort array by length so the longest substrings go first
+    for reply in reversed(greetings_replies):
+        if reply.lower() in command:
+            command = command.replace(reply.lower(), '')
+            break
+    return command
 
 def execute_command(command, request):
     print(command.value_to_set)
@@ -68,9 +85,12 @@ def execute_command(command, request):
                 print(command.device.connection)
                 print(entity.get('value'))
                 value = entity.get('value')
-                if value > 100 or value < 0 :
+                if value > 100 or value < 0:
                     raise ValueIsNotPercent('Value is not a percent')
-                client.publish(command.device.connection, entity.get('value'))
+                value = int(scale_value(old_value = value, old_min = 0, old_max = 100, new_min = 
+                command.device.start_value, new_max = command.device.max_value))
+                print('new value: ' + str(value))
+                client.publish(command.device.connection, value)
             print(entity)
         # print(request.data)
     else:
@@ -82,17 +102,20 @@ def execute_command(command, request):
 def text_handler(request):
     command = request.data.get('request').get('command')
     command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string
+    command = greetings_handler(command.lower())
     try:
-        if command[-1] == ' ': # remove trailing space
-            command = command[0:-1]
+        command = command.strip()
+        # if command[-1] == ' ': # remove trailing space
+        #     command = command[0:-1]
     except:
         command = ''
     print(command)
     original = request.data.get('request').get('original_utterance')
     original = ''.join([i for i in original if not i.isdigit()])
     try:
-        if original[-1] == ' ':
-            original = original[0:-1]
+        original = original.strip()
+        # if original[-1] == ' ':
+            # original = original[0:-1]
     except:
         original = ''
     # print(request.data)
