@@ -54,6 +54,14 @@ class Phrase(models.Model):
     def __str__(self):
         return self.phrase
 
+class UsualPhrase(models.Model):
+    phrase = models.TextField(verbose_name="Фраза пользователя", null = True)
+    success_response = models.TextField(verbose_name="Ответ Алисы при успехе", null = True)
+    fail_response = models.TextField(verbose_name="Ответ Алисы, если что-то пошло не так", null = True)
+
+    def __str__(self):
+        return self.phrase
+
 class Session(models.Model):
     token = models.CharField(max_length = 255, null = True)
     location = models.ForeignKey(Scene, on_delete = models.CASCADE)

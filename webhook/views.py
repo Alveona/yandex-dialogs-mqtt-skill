@@ -4,16 +4,22 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from django.http import JsonResponse
 import paho.mqtt.client as mqtt
-from .models import Phrase, Command, Scene, Device, Session
+from .models import Phrase, Command, Scene, Device, Session, UsualPhrase
 from django.conf import settings
 
 class ValueIsNotPercent(Exception):
-    '''Raised when the value given to Alice to change on dimmer is not in percentage range (0-100)'''
+    ''' Raised when the value given to Alice to change on dimmer is not in percentage range (0-100)'''
     pass
 
 class NoAuthProvided(Exception):
-    ''' Raise when user didn't authorize in any location '''
+    ''' Raised when user didn't authorize in any location '''
     pass
+
+class NoDeviceStateChange(Exception):
+    ''' Raised when simple command is executed, is used to avoid block of code with command handling '''
+    def __init__(self, arg):
+        self.strerror = arg
+        self.args = {arg}
 
 class WebhookView(APIView):
     def post(self, request):
@@ -88,7 +94,18 @@ def auth_handler(request, token):
     else:
         return True
 
-
+def usual_phrases_handler(command):
+    ''' Is using to do simple responses without executing any commands to devices
+        False if there is no simple command, NoDeviceStateChange exception otherwise '''
+    command = greetings_handler(command.lower())
+    try:
+        phrase = UsualPhrase.objects.all().get(phrase__iexact = command)
+    except UsualPhrase.DoesNotExist:
+        return False
+    if phrase:
+        raise NoDeviceStateChange(phrase.success_response)
+    return False
+    
 def greetings_handler(command):
     ''' Is using to recognise greetings replies such as 'Алиса' and 'Слушай, Алиса' '''
     greetings_replies = ['Алиса', 'Слушай Алиса']
@@ -144,6 +161,7 @@ def text_handler(request):
     try:
         print(request.data.get('session').get('user_id'))
         auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
+        usual_phrases_handler(command) # Checking for any simple phrases
 
         command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string, we will retain them later from yandex's info
         command = greetings_handler(command.lower())
@@ -179,8 +197,8 @@ def text_handler(request):
                 text_to_return = "К сожалению, я не знаю такой команды"
         except ValueIsNotPercent:
             text_to_return = "Значение не является процентом"
-        
         return text_to_return
+
     except NoAuthProvided:
         command = greetings_handler(command.lower())
         if 'кодовое слово' in command:
@@ -199,4 +217,9 @@ def text_handler(request):
             print('No auth provided exception') # TODO auth
             text_to_return = "Вам нужно авторизоваться в помещении. Пожалуйста, скажите кодовое слово"
         return text_to_return
+
+    except NoDeviceStateChange as e:
+        text_to_return = e.strerror # Hacky way to pass data through blocks with exceptions
+        return text_to_return
+        
         
