@@ -52,9 +52,15 @@ def on_connect(client, userdata, flags, rc):
         print("connected OK Returned code=",rc)
     else:
         print("Bad connection Returned code=",rc)
+def on_message_callback(client, userdata, message):
+    global payload 
+    payload = message.payload
+    print('payload = ' + payload.decode('utf-8'))
+    client.disconnect()
 
 client.on_disconnect = on_disconnect
 client.on_connect = on_connect
+client.on_message = on_message_callback
 
 def scale_value(old_value, old_min, old_max, new_min, new_max):
     # is using to convert percentages to different range
@@ -75,14 +81,19 @@ def greetings_handler(command):
             break
     return command
 
+payload = 0
+
 def execute_command(command, request):
     ''' Returns None if value is published or given value otherwise '''
+    client.reconnect()
     print(command.value_to_set)
     if command.get_value == True:
-        value = client.subscribe(command.device.connection)
-        print(value)
+        client.subscribe(command.device.connection)
+        client.loop_forever()
+        print(payload)
+        client.reconnect()
         client.unsubscribe(command.device.connection)
-        return value
+        return payload.decode('utf-8')
     # in request, value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
     if int(command.value_to_set) == -1:
         print('if')
@@ -92,10 +103,11 @@ def execute_command(command, request):
                 print(command.device.connection)
                 print(entity.get('value'))
                 value = entity.get('value')
-                if value > 100 or value < 0:
-                    raise ValueIsNotPercent('Value is not a percent')
-                value = int(scale_value(old_value = value, old_min = 0, old_max = 100, new_min = 
-                command.device.start_value, new_max = command.device.max_value))
+                if command.device.percent:
+                    if value > 100 or value < 0:
+                        raise ValueIsNotPercent('Value is not a percent')
+                    value = int(scale_value(old_value = value, old_min = 0, old_max = 100, new_min = 
+                    command.device.start_value, new_max = command.device.max_value))
                 print('new value: ' + str(value))
                 client.publish(command.device.connection, value, retain = True)
             print(entity)
@@ -124,14 +136,21 @@ def text_handler(request):
         original = ''
     try:
         phrase = Phrase.objects.all().get(phrase__iexact = command.lower())
-        execute_command(phrase.command, request)
+        value_to_return = execute_command(phrase.command, request)
         text_to_return = phrase.success_response
+        if value_to_return is not None:
+            if phrase.command.device.percent:
+                value_to_return = scale_value(old_value = int(value_to_return), old_min = phrase.command.device.start_value, old_max = phrase.command.device.max_value, 
+                new_min = 0, new_max = 100) # scale to percents
+            text_to_return += ' ' + str(int(value_to_return))
     except Phrase.DoesNotExist:
         print('exception')
         try:
             phrase = Phrase.objects.all().get(phrase__iexact = original.lower())
             execute_command(phrase.command, request)
             text_to_return = phrase.success_response
+            if value_to_return is not None:
+                text_to_return += ' ' + value_to_return
         except Phrase.DoesNotExist:
             text_to_return = "К сожалению, я не знаю такой команды"
     except ValueIsNotPercent:

@@ -19,6 +19,8 @@ class Device(models.Model):
     значение устройства, значение по умолчанию - 100')
     connection = models.CharField(max_length = 255, verbose_name = 'Строка подключения к устройству')
     scene = models.ForeignKey(Scene, on_delete=models.CASCADE)
+    percent = models.BooleanField(verbose_name='Значение в процентах', help_text='Если выбрано, то значения с устройства будут приведены\
+    к процентам в соответствии с заданными значениями максимума и минимума как при запросе, так и при ответе', default = False)
 
     def __str__(self):
         type = {
@@ -43,7 +45,8 @@ class Command(models.Model):
     
 class Phrase(models.Model):
     phrase = models.TextField(verbose_name="Фраза пользователя", null = True)
-    success_response = models.TextField(verbose_name="Ответ Алисы при успехе", null = True)
+    success_response = models.TextField(verbose_name="Ответ Алисы при успехе", null = True, 
+    help_text='В случае возвращаемого значения, ответ будет выводиться в формате {Ваша фраза} + {Значение}, например "Текущая температура 32"')
     fail_response = models.TextField(verbose_name="Ответ Алисы, если что-то пошло не так", null = True)
     command = models.ForeignKey(Command, on_delete=models.CASCADE)
 
