@@ -21,6 +21,17 @@ class NoDeviceStateChange(Exception):
         self.strerror = arg
         self.args = {arg}
 
+class StartOfDialog(Exception):
+    ''' Raised when session has 'new = True' which means it is first message of dialog and Alice should introduce herself '''
+    pass
+
+class LocationFound(Exception):
+    ''' Raised when the 'Где я' phrase is invoked '''
+    def __init__(self, arg):
+        self.strerror = arg
+        self.args = {arg}
+
+
 class WebhookView(APIView):
     def post(self, request):
         # print(request.data)
@@ -47,7 +58,6 @@ class WebhookView(APIView):
             "version" : "1.0"
             }, 
             status = status.HTTP_200_OK)
-# Create your views here.
 
 client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
 client.connect(host = "192.168.0.83", port = 1883)
@@ -73,11 +83,18 @@ client.on_connect = on_connect
 client.on_message = on_message_callback
 
 def scale_value(old_value, old_min, old_max, new_min, new_max):
-    # is using to convert percentages to different range
+    # is using to convert percentages to specific value range or opposite
     new_value = (((old_value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
     if new_value:
         return new_value
     return 0
+
+def introduction_handler(request):
+    ''' Checks if it is start of dialog, in this case raises StartOfDialog exception, otherwise returns False'''
+    print(request.data.get('session').get('new'))
+    if request.data.get('session').get('new') == True:
+        raise StartOfDialog
+    return False
 
 def auth_handler(request, token):
     ''' True if authorized, NoAuthProvided exception otherwise as well as in case of changing room'''
@@ -110,12 +127,23 @@ def greetings_handler(command):
     ''' Is using to recognise greetings replies such as 'Алиса' and 'Слушай, Алиса' '''
     greetings_replies = ['Алиса', 'Слушай Алиса']
     greetings_replies = sorted(greetings_replies, key = len)
-    # is using to sort array by length so the longest substring goes first
+    # is using to sort array by length so the longest substring goes first which is required for 'contains' method proper work
     for reply in reversed(greetings_replies):
         if reply.lower() in command:
             command = command.replace(reply.lower(), '')
             break
     return command
+
+def location_find_handler(command, token):
+    ''' Is using to handle requests like 'где я' '''
+    ''' Raises LocationFound exception with location name if asking for location is found, otherwise returns False'''
+    command = greetings_handler(command.lower())
+    if 'где я' in command:
+        sessions = Session.objects.all().filter(token = token, expired = 0).order_by('-id')
+        session = sessions.first()
+        location = session.location
+        raise LocationFound(location.title)
+    return False
 
 payload = 0
 
@@ -160,8 +188,10 @@ def text_handler(request):
     command = request.data.get('request').get('command')
     try:
         print(request.data.get('session').get('user_id'))
-        auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
+        introduction_handler(request) # Check if it is start of dialog
         usual_phrases_handler(command) # Checking for any simple phrases
+        auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
+        location_find_handler(command, request.data.get('session').get('user_id')) # Check if user requested current location
 
         command = ''.join([i for i in command if not i.isdigit()]) # delete numbers from string, we will retain them later from yandex's info
         command = greetings_handler(command.lower())
@@ -208,7 +238,7 @@ def text_handler(request):
                 location = Scene.objects.all().get(activation__iexact = key_word) # if there is location with certain key word
                 session = Session(token = request.data.get('session').get('user_id'), location = location, expired = False)
                 session.save()
-                text_to_return = 'Спасибо, вы авторизовались в помещении кодовой фразой ' + location.activation
+                text_to_return = 'Спасибо, вы авторизовались в помещении ' + location.title
             except Scene.DoesNotExist:
                 return 'К сожалению, я не знаю такого кодового слова'
             except:
@@ -221,5 +251,10 @@ def text_handler(request):
     except NoDeviceStateChange as e:
         text_to_return = e.strerror # Hacky way to pass data through blocks with exceptions
         return text_to_return
+
+    except StartOfDialog:
+        return 'Добро пожаловать в голосовой помощник умного дома, чтобы узнать больше о возможностях, скажите "помощь"'
         
-        
+    except LocationFound as e:
+        text_to_return = e.strerror
+        return 'Текущая локация ' + text_to_return
