@@ -31,6 +31,9 @@ class LocationFound(Exception):
         self.strerror = arg
         self.args = {arg}
 
+class WrongLocation(Exception):
+    ''' Raise when there is requested command in database, but it is in the different room '''
+    pass
 
 class WebhookView(APIView):
     def post(self, request):
@@ -63,6 +66,7 @@ client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transp
 client.connect(host = "192.168.0.83", port = 1883)
 
 def on_disconnect(client, userdata, rc):
+    print('Disconnect, rc:' + str(rc))
     if rc != 0:
         print("Unexpected disconnection.")
         client.reconnect()
@@ -152,34 +156,39 @@ def execute_command(command, request):
     client.reconnect()
     print(command.value_to_set)
     if command.get_value == True:
-        client.subscribe(command.device.connection)
+        client.reconnect()
+        if command.device.connection_read != '':
+            client.subscribe(command.device.connection_read)
+        else:
+            client.subscribe(command.device.connection)
         client.loop_forever()
         print(payload)
-        client.reconnect()
+        # client.reconnect()
+        client.unsubscribe(command.device.connection_read)
         client.unsubscribe(command.device.connection)
         return payload.decode('utf-8')
+    
+    sessions = Session.objects.all().filter(token = request.data.get('session').get('user_id'), expired = 0).order_by('-id')
+    session = sessions.first()
+    current_location = session.location
+    if current_location != command.device.scene:
+        raise WrongLocation
     # in request, value is string so we cast to int assuming it's IntegerField so there will be no exceptions occured
-    if int(command.value_to_set) == -1:
-        print('if')
-        print(request.data)
+    if int(command.value_to_set) == -1: # if Alice is supposed to get value from user and set it to device
         for entity in request.data.get('request').get('nlu').get('entities'):
             if entity.get('type') == 'YANDEX.NUMBER':
-                print('publishing')
-                print(command.device.connection)
-                print(entity.get('value'))
                 value = entity.get('value')
                 if command.device.percent:
                     if value > 100 or value < 0:
                         raise ValueIsNotPercent('Value is not a percent')
                     value = int(scale_value(old_value = value, old_min = 0, old_max = 100, new_min = 
                     command.device.start_value, new_max = command.device.max_value))
-                print('new value: ' + str(value))
                 client.publish(command.device.connection, value, retain = True)
-            print(entity)
-        # print(request.data)
+    elif int(command.value_to_set) == -2:
+        client.publish(command.device.connection, command.device.start_value, retain = True)
+    elif int(command.value_to_set) == -3:
+        client.publish(command.device.connection, command.device.max_value, retain = True)
     else:
-        print(command.value_to_set)
-        print('else')
         client.publish(command.device.connection, command.value_to_set, retain = True)
     return None
     
@@ -214,7 +223,7 @@ def text_handler(request):
                 if phrase.command.device.percent:
                     value_to_return = scale_value(old_value = int(value_to_return), old_min = phrase.command.device.start_value, old_max = phrase.command.device.max_value, 
                     new_min = 0, new_max = 100) # scale to percents
-                text_to_return += ' ' + str(int(value_to_return))
+                text_to_return += ' ' + str(int(float(value_to_return)))
         except Phrase.DoesNotExist:
             print('exception')
             try:
@@ -258,3 +267,6 @@ def text_handler(request):
     except LocationFound as e:
         text_to_return = e.strerror
         return 'Текущая локация ' + text_to_return
+
+    except WrongLocation:
+        return 'К сожалению, в этом помещении такой команды нет'

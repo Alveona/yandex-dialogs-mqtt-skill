@@ -18,7 +18,8 @@ class Device(models.Model):
     значение устройства, значение по умолчанию - 0')
     max_value = models.IntegerField(verbose_name='Максимальное значение', default=100, help_text='Минимальное\
     значение устройства, значение по умолчанию - 100')
-    connection = models.CharField(max_length = 255, verbose_name = 'Строка подключения к устройству')
+    connection = models.CharField(max_length = 255, verbose_name = 'Строка подключения к устройству на запись')
+    connection_read = models.CharField(max_length = 255, verbose_name = 'Строка подключения к устройству на чтение', default = '')
     scene = models.ForeignKey(Scene, on_delete=models.CASCADE)
     percent = models.BooleanField(verbose_name='Значение в процентах', help_text='Если выбрано, то значения с устройства будут приведены\
     к процентам в соответствии с заданными значениями максимума и минимума как при запросе, так и при ответе', default = False)
