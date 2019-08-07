@@ -4,11 +4,19 @@ from rest_framework import viewsets, status
 from rest_framework.views import APIView
 from django.http import JsonResponse
 import paho.mqtt.client as mqtt
-from .models import Phrase, Command, Scene, Device, Session, UsualPhrase
+from .models import Phrase, Command, Scene, Device, Session, UsualPhrase, Board
 from django.conf import settings
 
 class ValueIsNotPercent(Exception):
     ''' Raised when the value given to Alice to change on dimmer is not in percentage range (0-100)'''
+    pass
+
+class NotInitializedYet(Exception):
+    ''' Raised when user didn't initialize itself in any appartment '''
+    pass
+
+class ResetInProgress(Exception):
+    ''' Raised when reset is in progress '''
     pass
 
 class NoAuthProvided(Exception):
@@ -34,6 +42,8 @@ class LocationFound(Exception):
 class WrongLocation(Exception):
     ''' Raise when there is requested command in database, but it is in the different room '''
     pass
+
+
 
 class WebhookView(APIView):
     def post(self, request):
@@ -63,7 +73,7 @@ class WebhookView(APIView):
             status = status.HTTP_200_OK)
 
 client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
-client.connect(host = "192.168.0.83", port = 1883)
+client.connect(host = "192.168.0.194", port = 1883)
 
 def on_disconnect(client, userdata, rc):
     print('Disconnect, rc:' + str(rc))
@@ -100,9 +110,32 @@ def introduction_handler(request):
         raise StartOfDialog
     return False
 
+reset_in_progress = False
+def initialization_handler(request, token):
+    ''' True if initialized in any appartments, NotInitializedYet exception otherwise.
+    Also handles soft reset option, using special dialog to confirm it;  '''
+    sessions = Session.objects.all().filter(token = token, expired = False)
+    command = request.data.get('request').get('command')
+    command = greetings_handler(command.lower())
+    global reset_in_progress
+    if 'полный сброс' in command:
+        raise ResetInProgress(reset_in_progress)
+        
+        # TODO
+    
+    
+    if not sessions:
+        raise NotInitializedYet('Not initialized yet')
+
+    else:
+        return True
+
+
 def auth_handler(request, token):
     ''' True if authorized, NoAuthProvided exception otherwise as well as in case of changing room'''
     sessions = Session.objects.all().filter(token = token, expired = False)
+    sessions = sessions.exclude(location__isnull = True) # drop sessions where you initialized in board but not in room yet
+    print('Sessions: ' + str(sessions))
     command = request.data.get('request').get('command')
     command = greetings_handler(command.lower())
     if 'поменять помещение' in command:
@@ -198,7 +231,8 @@ def text_handler(request):
     try:
         print(request.data.get('session').get('user_id'))
         introduction_handler(request) # Check if it is start of dialog
-        usual_phrases_handler(command) # Checking for any simple phrases
+        usual_phrases_handler(command) # Checking for any simple phrase
+        initialization_handler(request, request.data.get('session').get('user_id')) # Checking initialization in specific board
         auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
         location_find_handler(command, request.data.get('session').get('user_id')) # Check if user requested current location
 
@@ -244,8 +278,10 @@ def text_handler(request):
             word_list = command.split()
             key_word = word_list[-1]
             try:
-                location = Scene.objects.all().get(activation__iexact = key_word) # if there is location with certain key word
-                session = Session(token = request.data.get('session').get('user_id'), location = location, expired = False)
+                session = Session.objects.all().get(token = request.data.get('session').get('user_id'), expired = False)
+                location = Scene.objects.all().get(activation__iexact = key_word, board = session.board) # if there is location with certain key word
+                session.location = location
+                # session = Session(token = request.data.get('session').get('user_id'), location = location, expired = False)
                 session.save()
                 text_to_return = 'Спасибо, вы авторизовались в помещении ' + location.title
             except Scene.DoesNotExist:
@@ -270,3 +306,34 @@ def text_handler(request):
 
     except WrongLocation:
         return 'К сожалению, в этом помещении такой команды нет'
+
+    except ResetInProgress:
+        global reset_in_progress
+        if reset_in_progress == False:
+            reset_in_progress = True
+            text_to_return = 'Вы уверены, что хотите произвести полный сброс? Скажите "да" или "нет"'
+            return text_to_return
+        if reset_in_progress == True:
+            pass # TODO reset
+
+    except NotInitializedYet:
+        command = greetings_handler(command.lower())
+        if 'авторизация' in command:
+            word_list = command.split()
+            key_word = word_list[-1]
+            try:
+                key_word = int(key_word)
+                board = Board.objects.all().get(activation_code__iexact = key_word) # if there is board with certain activation code
+                session = Session(token = request.data.get('session').get('user_id'), board = board, expired = False)
+                session.save()
+                text_to_return = 'Спасибо, авторизация в щите ' + board.title + ' прошла успешно'
+            except Board.DoesNotExist:
+                return 'К сожалению, я не знаю такого кодового числа'
+            except ValueError:
+                return 'Код авторизации должен быть числом'
+            except:
+                return 'К сожалению, произошла внутренняя ошибка с кодами. Возможно, одинаковых кодовых слов больше одного.'
+        else:
+            print('No initialization provided exception') # TODO auth
+            text_to_return = "Вам нужно авторизоваться в управляющем щите. Пожалуйста, скажите кодовое число"
+        return text_to_return

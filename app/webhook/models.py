@@ -3,12 +3,19 @@ from django.conf import settings
 from django import forms
 
 
+class Board(models.Model):
+    title = models.CharField(max_length = 255, null = True)
+    activation_code = models.IntegerField(null = True)
+    connection = models.CharField(max_length = 255, null = True)
+
+    def __str__(self):
+        return self.title + '@' + self.connection
 class Scene(models.Model):
     title = models.CharField(max_length = 255, null = True, verbose_name = 'Название помещения')
-    activation = models.CharField(max_length = 255, verbose_name = 'Кодовая фраза', 
-    help_text = 'Используется для авторизации в конкретном помещении', null = True)
+    activation = models.CharField(max_length = 255, verbose_name = 'Кодовая фраза',     help_text = 'Используется для авторизации в конкретном помещении', null = True)
+    board = models.ForeignKey(Board, on_delete = models.CASCADE, null = True)
     def __str__(self):
-        return self.title
+        return self.title + '; Wiren Board: ' + self.board.title
 
 class Device(models.Model):
     type = models.IntegerField(verbose_name='Тип устройства', help_text='0 - переключатель; 1 - кнопка\
@@ -63,7 +70,11 @@ class UsualPhrase(models.Model):
     def __str__(self):
         return self.phrase
 
+
 class Session(models.Model):
+    board = models.ForeignKey(Board, on_delete = models.CASCADE, null = True)
     token = models.CharField(max_length = 255, null = True)
-    location = models.ForeignKey(Scene, on_delete = models.CASCADE)
+    location = models.ForeignKey(Scene, on_delete = models.CASCADE, null = True)
     expired = models.BooleanField(default = False)
+    
+    
