@@ -15,9 +15,10 @@ class Scene(models.Model):
     activation = models.CharField(max_length = 255, verbose_name = 'Кодовая фраза',     help_text = 'Используется для авторизации в конкретном помещении', null = True)
     board = models.ForeignKey(Board, on_delete = models.CASCADE, null = True)
     def __str__(self):
-        return self.title + '; Wiren Board: ' + self.board.title
+        return self.title + '; ' + self.board.title +'@' + self.board.connection
 
 class Device(models.Model):
+    title = models.CharField(max_length = 255, default = '')
     type = models.IntegerField(verbose_name='Тип устройства', help_text='0 - переключатель; 1 - кнопка\
         2 - диммер') # 0 - switch, 1 - push; 2 - range
     # command = models.ForeignKey(Command, on_delete=models.CASCADE)
@@ -38,7 +39,7 @@ class Device(models.Model):
             2: "Диммер"
         }
 
-        return type.get(self.type) + "; id: " + str(self.id)
+        return self.title + '; ' + type.get(self.type) + "; id: " + str(self.id)
 
 
 SET_CHOICES = [('0', '0'), ('1', '1'), ('-1', 'Пользовательское значение от Алисы'), ('-2', 'Минимальное значение устройства'), 

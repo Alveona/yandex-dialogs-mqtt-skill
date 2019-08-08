@@ -118,9 +118,10 @@ def initialization_handler(request, token):
     command = request.data.get('request').get('command')
     command = greetings_handler(command.lower())
     global reset_in_progress
+    if reset_in_progress == True:
+        raise ResetInProgress
     if 'полный сброс' in command:
         raise ResetInProgress(reset_in_progress)
-        
         # TODO
     
     
@@ -232,7 +233,7 @@ def text_handler(request):
         print(request.data.get('session').get('user_id'))
         introduction_handler(request) # Check if it is start of dialog
         usual_phrases_handler(command) # Checking for any simple phrase
-        initialization_handler(request, request.data.get('session').get('user_id')) # Checking initialization in specific board
+        initialization_handler(request, request.data.get('session').get('user_id')) # Checking initialization in specific board, handles resets as well
         auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
         location_find_handler(command, request.data.get('session').get('user_id')) # Check if user requested current location
 
@@ -314,7 +315,18 @@ def text_handler(request):
             text_to_return = 'Вы уверены, что хотите произвести полный сброс? Скажите "да" или "нет"'
             return text_to_return
         if reset_in_progress == True:
-            pass # TODO reset
+            if command == 'да':
+                sessions = Session.objects.all().filter(token = request.data.get('session').get('user_id'), expired = False)
+                for s in sessions:
+                    s.expired = True
+                    s.save()
+                text_to_return = "Вам нужно авторизоваться в управляющем щите. Пожалуйста, скажите кодовое число"
+                reset_in_progress = False
+                return text_to_return
+            else:
+                text_to_return = "Процесс сброса отменен"
+                reset_in_progress = False
+                return text_to_return
 
     except NotInitializedYet:
         command = greetings_handler(command.lower())
@@ -334,6 +346,6 @@ def text_handler(request):
             except:
                 return 'К сожалению, произошла внутренняя ошибка с кодами. Возможно, одинаковых кодовых слов больше одного.'
         else:
-            print('No initialization provided exception') # TODO auth
+            print('No initialization provided exception') 
             text_to_return = "Вам нужно авторизоваться в управляющем щите. Пожалуйста, скажите кодовое число"
         return text_to_return
