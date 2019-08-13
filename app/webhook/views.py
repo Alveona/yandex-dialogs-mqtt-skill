@@ -73,7 +73,7 @@ class WebhookView(APIView):
             status = status.HTTP_200_OK)
 
 client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
-client.connect(host = "192.168.0.194", port = 1883)
+client.connect(host = "192.168.0.69", port = 1883)
 
 def on_disconnect(client, userdata, rc):
     print('Disconnect, rc:' + str(rc))
@@ -141,7 +141,8 @@ def auth_handler(request, token):
     command = greetings_handler(command.lower())
     if 'поменять помещение' in command:
         for session in sessions:
-            session.expired = True
+            #session.expired = True
+            session.location = None #TODO check if work properly
             session.save()
         raise NoAuthProvided('Room changed')
     if not sessions:
