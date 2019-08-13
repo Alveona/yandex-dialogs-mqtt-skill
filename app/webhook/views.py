@@ -6,6 +6,8 @@ from django.http import JsonResponse
 import paho.mqtt.client as mqtt
 from .models import Phrase, Command, Scene, Device, Session, UsualPhrase, Board
 from django.conf import settings
+from .replies import *
+import random
 
 class ValueIsNotPercent(Exception):
     ''' Raised when the value given to Alice to change on dimmer is not in percentage range (0-100)'''
@@ -120,10 +122,8 @@ def initialization_handler(request, token):
     global reset_in_progress
     if reset_in_progress == True:
         raise ResetInProgress
-    if 'полный сброс' in command:
-        raise ResetInProgress(reset_in_progress)
-        # TODO
-    
+    if SOFT_RESET_TRIGGER in command:
+        raise ResetInProgress(reset_in_progress)    
     
     if not sessions:
         raise NotInitializedYet('Not initialized yet')
@@ -139,7 +139,7 @@ def auth_handler(request, token):
     print('Sessions: ' + str(sessions))
     command = request.data.get('request').get('command')
     command = greetings_handler(command.lower())
-    if 'поменять помещение' in command:
+    if CHANGE_ROOM in command:
         for session in sessions:
             #session.expired = True
             session.location = None #TODO check if work properly
@@ -177,7 +177,7 @@ def location_find_handler(command, token):
     ''' Is using to handle requests like 'где я' '''
     ''' Raises LocationFound exception with location name if asking for location is found, otherwise returns False'''
     command = greetings_handler(command.lower())
-    if 'где я' in command:
+    if WHERE_AM_I in command:
         sessions = Session.objects.all().filter(token = token, expired = 0).order_by('-id')
         session = sessions.first()
         location = session.location
@@ -269,14 +269,14 @@ def text_handler(request):
                 if value_to_return is not None:
                     text_to_return += ' ' + value_to_return
             except Phrase.DoesNotExist:
-                text_to_return = "К сожалению, я не знаю такой команды"
+                text_to_return = random.choice(COMMAND_NOT_FOUND)
         except ValueIsNotPercent:
-            text_to_return = "Значение не является процентом"
+            text_to_return = random.choice(VALUE_IS_NOT_PERCENT)
         return text_to_return
 
     except NoAuthProvided:
         command = greetings_handler(command.lower())
-        if 'кодовое слово' in command:
+        if 'помещение' in command:
             word_list = command.split()
             key_word = word_list[-1]
             try:
@@ -285,14 +285,14 @@ def text_handler(request):
                 session.location = location
                 # session = Session(token = request.data.get('session').get('user_id'), location = location, expired = False)
                 session.save()
-                text_to_return = 'Спасибо, вы авторизовались в помещении ' + location.title
+                text_to_return = random.choice(AUTHORIZED_IN_ROOM) + location.title
             except Scene.DoesNotExist:
-                return 'К сожалению, я не знаю такого кодового слова'
+                return random.choice(INVALID_KEYWORD_ROOM)
             except:
-                return 'К сожалению, произошла внутренняя ошибка с кодовыми словами. Возможно, одинаковых кодовых слов больше одного.'
+                return random.choice(INTERNAL_KEYWORD_ERROR_ROOM)
         else:
             print('No auth provided exception') # TODO auth
-            text_to_return = "Вам нужно авторизоваться в помещении. Пожалуйста, скажите кодовое слово"
+            text_to_return = random.choice(SHOULD_AUTHORIZE_ROOM)
         return text_to_return
 
     except NoDeviceStateChange as e:
@@ -300,20 +300,20 @@ def text_handler(request):
         return text_to_return
 
     except StartOfDialog:
-        return 'Добро пожаловать в голосовой помощник умного дома, чтобы узнать больше о возможностях, скажите "помощь"'
+        return random.choice(GREETINGS_PHRASE)
         
     except LocationFound as e:
         text_to_return = e.strerror
-        return 'Текущая локация ' + text_to_return
+        return random.choice(CURRENT_LOCATION) + text_to_return
 
     except WrongLocation:
-        return 'К сожалению, в этом помещении такой команды нет'
+        return random.choice(WRONG_LOCATION)
 
     except ResetInProgress:
         global reset_in_progress
         if reset_in_progress == False:
             reset_in_progress = True
-            text_to_return = 'Вы уверены, что хотите произвести полный сброс? Скажите "да" или "нет"'
+            text_to_return = random.choice(SOFT_RESET)
             return text_to_return
         if reset_in_progress == True:
             if command == 'да':
@@ -321,11 +321,11 @@ def text_handler(request):
                 for s in sessions:
                     s.expired = True
                     s.save()
-                text_to_return = "Вам нужно авторизоваться в управляющем щите. Пожалуйста, скажите кодовое число"
+                text_to_return = random.choice(SHOULD_AUTHORIZE_BOARD)
                 reset_in_progress = False
                 return text_to_return
             else:
-                text_to_return = "Процесс сброса отменен"
+                text_to_return = random.choice(RESET_ABORTED)
                 reset_in_progress = False
                 return text_to_return
 
@@ -341,12 +341,12 @@ def text_handler(request):
                 session.save()
                 text_to_return = 'Спасибо, авторизация в щите ' + board.title + ' прошла успешно'
             except Board.DoesNotExist:
-                return 'К сожалению, я не знаю такого кодового числа'
+                return random.choice(INVALID_KEYWORD_BOARD)
             except ValueError:
-                return 'Код авторизации должен быть числом'
+                return random.choice(INVALID_KEYWORD_BOARD)
             except:
-                return 'К сожалению, произошла внутренняя ошибка с кодами. Возможно, одинаковых кодовых слов больше одного.'
+                return random.choice(INTERNAL_KEYWORD_ERROR_BOARD)
         else:
             print('No initialization provided exception') 
-            text_to_return = "Вам нужно авторизоваться в управляющем щите. Пожалуйста, скажите кодовое число"
+            text_to_return = random.choice(SHOULD_AUTHORIZE_BOARD)
         return text_to_return
