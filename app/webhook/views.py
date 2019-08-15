@@ -32,8 +32,12 @@ class NoDeviceStateChange(Exception):
         self.args = {arg}
 
 class StartOfDialog(Exception):
-    ''' Raised when session has 'new = True' which means it is first message of dialog and Alice should introduce herself '''
-    pass
+    ''' Raised when session has 'new = True' which means it is first message of dialog and Alice should introduce herself,
+    passes token to check if there is any existing session yet '''
+    
+    def __init__(self, arg):
+        self.strerror = arg
+        self.args = {arg}
 
 class LocationFound(Exception):
     ''' Raised when the 'Где я' phrase is invoked '''
@@ -105,11 +109,11 @@ def scale_value(old_value, old_min, old_max, new_min, new_max):
         return new_value
     return 0
 
-def introduction_handler(request):
+def introduction_handler(request, token):
     ''' Checks if it is start of dialog, in this case raises StartOfDialog exception, otherwise returns False'''
     print(request.data.get('session').get('new'))
     if request.data.get('session').get('new') == True:
-        raise StartOfDialog
+        raise StartOfDialog(token)
     return False
 
 reset_in_progress = False
@@ -232,7 +236,7 @@ def text_handler(request):
     command = request.data.get('request').get('command')
     try:
         print(request.data.get('session').get('user_id'))
-        introduction_handler(request) # Check if it is start of dialog
+        introduction_handler(request, request.data.get('session').get('user_id')) # Check if it is start of dialog
         usual_phrases_handler(command) # Checking for any simple phrase
         initialization_handler(request, request.data.get('session').get('user_id')) # Checking initialization in specific board, handles resets as well
         auth_handler(request, request.data.get('session').get('user_id')) # Checking auth, also handles logging out from rooms
@@ -276,7 +280,7 @@ def text_handler(request):
 
     except NoAuthProvided:
         command = greetings_handler(command.lower())
-        if 'помещение' in command:
+        if KEYWORD_ROOM in command:
             word_list = command.split()
             key_word = word_list[-1]
             try:
@@ -299,8 +303,12 @@ def text_handler(request):
         text_to_return = e.strerror # Hacky way to pass data through blocks with exceptions
         return text_to_return
 
-    except StartOfDialog:
-        return random.choice(GREETINGS_PHRASE)
+    except StartOfDialog as e:
+        sessions = Session.objects.all().filter(token = e.strerror, expired = False)
+        if not sessions:
+            return random.choice(GREETINGS_PHRASE)
+        else:
+            return random.choice(GREETINGS_PHRASE_WELCOME_BACK)
         
     except LocationFound as e:
         text_to_return = e.strerror
@@ -331,7 +339,7 @@ def text_handler(request):
 
     except NotInitializedYet:
         command = greetings_handler(command.lower())
-        if 'авторизация' in command:
+        if KEYWORD_BOARD in command:
             word_list = command.split()
             key_word = word_list[-1]
             try:
@@ -339,11 +347,11 @@ def text_handler(request):
                 board = Board.objects.all().get(activation_code__iexact = key_word) # if there is board with certain activation code
                 session = Session(token = request.data.get('session').get('user_id'), board = board, expired = False)
                 session.save()
-                text_to_return = 'Спасибо, авторизация в щите ' + board.title + ' прошла успешно'
+                text_to_return = 'Спасибо, авторизация в щите ' + board.title + ' прошла успешно. Теперь выберите помещение командой "' + KEYWORD_ROOM + '"'
             except Board.DoesNotExist:
                 return random.choice(INVALID_KEYWORD_BOARD)
             except ValueError:
-                return random.choice(INVALID_KEYWORD_BOARD)
+                return random.choice(KEYWORD_IS_NOT_INT)
             except:
                 return random.choice(INTERNAL_KEYWORD_ERROR_BOARD)
         else:
