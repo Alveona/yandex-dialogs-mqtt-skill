@@ -4,7 +4,6 @@ chardet==3.0.4
 Click==7.0
 decorator==4.4.0
 Django==2.2.3
-django-suit==2.0a1
 djangorestframework==3.10.1
 dnspython==1.16.0
 Events==0.3
