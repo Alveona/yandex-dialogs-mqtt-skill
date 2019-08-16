@@ -79,7 +79,7 @@ class WebhookView(APIView):
             status = status.HTTP_200_OK)
 
 client = mqtt.Client(client_id='1234', clean_session=True, userdata=None, transport='tcp')
-client.connect(host = "192.168.0.69", port = 1883)
+# client.connect(host = "192.168.0.69", port = 1883)
 
 def on_disconnect(client, userdata, rc):
     print('Disconnect, rc:' + str(rc))
@@ -192,7 +192,9 @@ payload = 0
 
 def execute_command(command, request):
     ''' Returns None if value is published or given value otherwise '''
-    client.reconnect()
+    # client.reconnect()
+    print(command.device.scene.board.connection)
+    client.connect(host = command.device.scene.board.connection, port = 1883)
     print(command.value_to_set)
     if command.get_value == True:
         client.reconnect()
