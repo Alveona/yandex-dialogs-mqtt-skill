@@ -14,7 +14,7 @@
 ---
 
 <div align="center">
-  <img alt="GitHub" src="https://img.shields.io/github/license/Alveona/yandex-dialogs-mqtt-skill">
+  <img alt="GitHub" src="https://img.shields.io/github/license/Alveona/yandex-dialogs-mqtt-skill?label=license">
   <br>
   <img src="static/screenshot.png" alt="screenshot" width="100%">
   <br>
