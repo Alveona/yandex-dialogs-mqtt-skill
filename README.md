@@ -1,6 +1,7 @@
 <div align="center">
   <h1>Яндекс.Диалоги + MQTT</h1>
   <br>
+  <i>note: this project is fully in Russian as it focuses on Russian voice assistant platform</i>
   <br>
   <p>
     Серверная часть для создания навыка Алисы на платформе Яндекс.Диалоги для интеграции с несколькими MQTT брокерами (на примере WirenBoard)
